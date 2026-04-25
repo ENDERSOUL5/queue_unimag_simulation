@@ -1,0 +1,161 @@
+{UTF-8}
+Aforo_maximo=150
+	~	Estudiantes
+	~	Capacidad máxima del comedor antes del bloqueo total|
+
+Capacidad_normal=6
+	~	Estudiantes/Minute
+	~	Tasa de servicio (Lectura del buffer de salida)|
+
+{ IMPLEMENTACIÓN: Lógica de la Máquina de Estados }
+
+{ ESTADO 3: Entrada bloqueada si la fila está llena para permitir el vaciado real }
+Entrada_estudiantes= IF THEN ELSE(Estudiantes en la fila < Aforo_maximo, 10, 0)
+	~	Estudiantes/Minute
+	~	Evita el 'Entrada = Salida' que causaba la meseta infinita en 150.|
+
+{ ESTADO 1 y 2: El sistema solo permite salida si no está en proceso de reposición }
+Estado_sistema= IF THEN ELSE(Reposicion_activa > 0, 0, 1)
+	~	dmnl
+	~	1 = Servicio Activo, 0 = Agotamiento/Reposición|
+
+Estudiantes en la fila= INTEG (Entrada_estudiantes - Salida_estudiantes, Estudiantes_inicial)
+	~	Estudiantes
+	~	|
+
+Estudiantes_inicial=5
+	~	Estudiantes
+	~	|
+
+Llegada_comida_lote= IF THEN ELSE(Reposicion_activa > 0, Stock_inicial / Tiempo_reposicion, 0)
+	~	Platos_comida/Minute
+	~	|
+
+{ GESTIÓN DE TRANSICIONES DE ESTADO }
+Reposicion_activa= INTEG (Tasa_Entrada_Estado - Tasa_Salida_Estado, 0)
+	~	dmnl
+	~	Variable de estado: >0 indica que el sistema está en 'Estado de Reposición'|
+
+Tasa_Entrada_Estado= IF THEN ELSE(Stock_comida <= 0 :AND: Reposicion_activa <= 0, 1/TIME STEP, 0)
+	~	1/Minute
+	~	Disparador (Trigger): Transición del Estado de Servicio al de Reposición|
+
+Tasa_Salida_Estado= IF THEN ELSE(Reposicion_activa > 0, 1/Tiempo_reposicion, 0)
+	~	1/Minute
+	~	Temporizador: Transición de vuelta al Estado de Servicio tras 10 min|
+
+Salida_estudiantes= IF THEN ELSE(Estado_sistema = 1 :AND: Stock_comida > 0, 
+                                   MIN(Capacidad_normal, Estudiantes en la fila / TIME STEP), 
+                                   0)
+	~	Estudiantes/Minute
+	~	Solo hay flujo de salida en el 'Estado 1'|
+
+Stock_comida= INTEG (Llegada_comida_lote - Salida_estudiantes, Stock_inicial)
+	~	Platos_comida
+	~	|
+
+Stock_inicial=50
+	~	Platos_comida
+	~	|
+
+Tiempo_reposicion=10
+	~	Minute
+	~	|
+
+********************************************************
+	.Control
+********************************************************~
+FINAL TIME  = 240
+	~	Minute
+	~	|
+INITIAL TIME  = 0
+	~	Minute
+	~	|
+SAVEPER  = TIME STEP 
+	~	Minute
+	~	|
+TIME STEP=0.0625
+	~	Minute
+	~	|
+
+\\\---/// Sketch information - do not modify anything except names
+V300  Do not put anything below this section - it will be ignored
+*View 1
+$-1--1--1,0,|12||-1--1--1|-1--1--1|-1--1--1|-1--1--1|-1--1--1|96,96,75,2
+10,1,Estudiantes en la fila,274,342,55,26,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
+12,2,48,-46,337,10,8,0,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,3,10,2,100,0,0,22,0,192,0,-1--1--1,,1|(25,337)|
+1,4,10,1,4,0,0,22,0,192,0,-1--1--1,,1|(158,337)|
+12,5,48,603,342,10,8,0,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,6,8,1,100,0,0,22,0,192,0,-1--1--1,,1|(392,342)|
+1,7,8,5,4,0,0,22,0,192,0,-1--1--1,,1|(530,342)|
+11,8,0,461,342,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
+10,9,Salida_estudiantes,461,376,46,26,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+11,10,0,91,337,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
+10,11,Entrada_estudiantes,91,371,46,26,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,12,Capacidad_normal,26,227,67,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,13,12,9,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,14,Estudiantes_inicial,279,218,57,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,15,14,1,0,0,0,0,0,192,1,-1--1--1,,1|(0,0)|
+10,16,Aforo_maximo,-29,504,74,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,17,16,11,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,18,Tiempo_reposicion,465,199,46,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,19,Estado_sistema,368,493,46,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,20,18,19,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,21,19,9,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,22,Stock_comida,1023,338,50,26,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,23,9,22,1,0,0,0,0,192,0,-1--1--1,,1|(717,404)|
+10,24,Stock_inicial,723,204,50,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,25,24,22,0,0,0,0,0,192,1,-1--1--1,,1|(0,0)|
+1,26,1,9,1,0,0,0,0,192,0,-1--1--1,,1|(361,381)|
+10,27,TIME STEP,670,108,49,16,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|||128-128-128,0,0,0,0,0,0
+1,28,27,9,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,29,Reposicion_activa,900,715,46,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,30,Time,395,638,31,16,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|||128-128-128,0,0,0,0,0,0
+12,31,48,722,338,10,8,0,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,32,34,31,100,0,0,22,0,192,0,-1--1--1,,1|(789,338)|
+1,33,34,22,4,0,0,22,0,192,0,-1--1--1,,1|(915,338)|
+11,34,0,852,338,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
+10,35,Llegada_comida_lote,852,372,46,26,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,36,29,35,1,0,0,0,0,192,0,-1--1--1,,1|(697,402)|
+1,37,18,29,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,38,22,29,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,39,30,30,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,40,Tiempo_activacion,271,131,50,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,41,18,40,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,42,22,40,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,43,29,40,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+1,44,40,35,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+///---\\\
+:L<%^E!@
+4:Time
+5:Salida_estudiantes
+9:current
+19:75,0
+24:0
+25:120
+26:120
+23:0
+15:0,0,0,0,0,0
+27:0,
+34:0,
+42:0
+72:0
+73:0
+95:0
+96:0
+97:0
+77:0
+78:0
+102:1
+93:0
+94:0
+92:0
+91:0
+90:0
+87:0
+75:
+43:
+103:8,8,8,3,8
+105:0,0,0,0,0,0,0,0,0,0
+104:Vensim Sans|12||0-0-0|0-0-0|-1--1--1|0-0-255|192-192-192|-1--1--1

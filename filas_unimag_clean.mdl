@@ -1,0 +1,74 @@
+{UTF-8}
+Aforo_maximo=150
+	~	Estudiantes
+	~	|
+
+Capacidad_normal=6
+	~	Estudiantes/Minute
+	~	|
+
+Entrada_estudiantes= IF THEN ELSE(Estudiantes en la fila < Aforo_maximo, 10, 0)
+	~	Estudiantes/Minute
+	~	|
+
+Estado_sistema= IF THEN ELSE(Reposicion_activa > 0, 0, 1)
+	~	dmnl
+	~	|
+
+Estudiantes en la fila= INTEG (Entrada_estudiantes - Salida_estudiantes, Estudiantes_inicial)
+	~	Estudiantes
+	~	|
+
+Estudiantes_inicial=5
+	~	Estudiantes
+	~	|
+
+Llegada_comida_lote= IF THEN ELSE(Reposicion_activa > 0, Stock_inicial / Tiempo_reposicion, 0)
+	~	Platos_comida/Minute
+	~	|
+
+Reposicion_activa= INTEG (Tasa_Entrada_Estado - Tasa_Salida_Estado, 0)
+	~	dmnl
+	~	|
+
+Tasa_Entrada_Estado= IF THEN ELSE(Stock_comida <= 0 :AND: Reposicion_activa <= 0, 1/TIME STEP, 0)
+	~	1/Minute
+	~	|
+
+Tasa_Salida_Estado= IF THEN ELSE(Reposicion_activa > 0, 1/Tiempo_reposicion, 0)
+	~	1/Minute
+	~	|
+
+Salida_estudiantes= IF THEN ELSE(Estado_sistema = 1 :AND: Stock_comida > 0,
+                                   MIN(Capacidad_normal, Estudiantes en la fila / TIME STEP),
+                                   0)
+	~	Estudiantes/Minute
+	~	|
+
+Stock_comida= INTEG (Llegada_comida_lote - Salida_estudiantes, Stock_inicial)
+	~	Platos_comida
+	~	|
+
+Stock_inicial=50
+	~	Platos_comida
+	~	|
+
+Tiempo_reposicion=10
+	~	Minute
+	~	|
+
+FINAL TIME = 240
+	~	Minute
+	~	|
+
+INITIAL TIME = 0
+	~	Minute
+	~	|
+
+TIME STEP = 0.0625
+	~	Minute
+	~	|
+
+SAVEPER = TIME STEP
+	~	Minute
+	~	|
