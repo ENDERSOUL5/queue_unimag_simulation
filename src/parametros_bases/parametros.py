@@ -22,7 +22,6 @@ PARAMETROS = {
     "Factor_reduccion_frustracion": 10.0,
     "Factor_escala_frustracion": 10.0,
     "Tasa_decaimiento_frustracion": 0.1,
-    "Frustracion_maxima": 1000.0,
     "Cola_inicial": 0.0,
 };
 

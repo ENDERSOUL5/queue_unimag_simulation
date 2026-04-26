@@ -1,5 +1,5 @@
 # Caso de Estudio: Dinámica de Sistemas - Comedor Unimagdalena
-**Estado del Documento:** Borrador Técnico V3.0 (Unificado)
+**Estado del Documento:** Borrador Técnico V4.0 (Actualizado)
 **Dominio:** Ingeniería de Sistemas / Dinámica de Sistemas
 **Autor:** Senior System Architect (AI Assistant)
 
@@ -12,18 +12,24 @@ El sistema de filas del comedor de la **Universidad del Magdalena** presenta un 
 Además, el bloqueo recurrente genera una degradación del contrato social: erosión del costo ético (el usuario percibe que la norma de hacer fila no es útil) e inhibición del castigo social (la comunidad deja de reprochar al que se cuela). Este arquetipo "Soluciones contraproducentes" cierra un bucle de refuerzo donde la conducta disruptiva (colarse) emerge como respuesta adaptativa al fallo técnico del sistema.
 
 ### Parámetros Críticos (Inputs)
-- **Beneficiarios:** 150 Estudiantes (Total con derecho a almuerzo).
-- **Tasa_Llegada_base:** 15 est/min (Tasa base para distribución horaria).
+- **Beneficiarios:** 800 Estudiantes (Total con derecho a almuerzo).
+- **Tasa_Llegada_base:** 9 est/min (Tasa base para distribución horaria).
 - **Tasa_asistencia:** 0.8 (80% de beneficiarios asiste normalmente, variable para simulaciones).
-- **Capacidad_Biometrica:** 6 est/min (Outflow bajo disponibilidad).
-- **Tiempo_reposicion:** 10 Minutos (Latencia de la interrupción).
-- **Stock_inicial:** 50 Platos.
+- **Capacidad_Biometrica:** 5 est/min (Outflow bajo disponibilidad).
+- **Capacidad_Manual:** 2 est/min (Outflow de respaldo cuando falla biométrico).
+- **Tiempo_reposicion:** 5 Minutos (Latencia de la interrupción).
+- **Stock_inicial:** 100 Platos.
 - **Stock_Seguridad:** 10 Platos (Buffer para reducir tiempo de reposición).
 - **Personal_presente:** 1 (Binario: 1 = hay personal, 0 = no hay).
-- **Costo_etico:** 0.5 (Adimensional, 0 = nadie se shamea, 1 = todos se shamean).
+- **Costo_etico:** 0.5 (Adimensional, 0 = nadie se avergüenza, 1 = todos se avergüenzan).
+- **Factor_colado:** 0.5 (Peso de la frustración sobre los colados).
 - **Tasa_falla_biometrica:** 0.1 (Probabilidad de fallo por minuto).
+- **Factor_reduccion_frustracion:** 10.0 (Reducción de frustración por atención efectiva).
+- **Factor_escala_frustracion:** 10.0 (Divisor para escalar frustración en colados).
+- **Tasa_decaimiento_frustracion:** 0.1 (Decaimiento natural de la frustración, 10% por minuto).
+- **Frustracion_maxima:** 1000.0 (Cap máximo para evitar explosión de frustración).
 - **Tiempo_cierre:** 240 Minutos (Horario de cierre del comedor).
-- **TIME_STEP:** 0.125 min (Intervalo de simulación para precisión en bloqueos de 5-15 min).
+- **TIME_STEP:** 0.125 min (Intervalo de simulación para precisión en bloqueos).
 
 ### Distribución de Llegadas (Distribución por Tramos)
 La tasa de llegada varía según la hora del día:
@@ -47,7 +53,7 @@ Para resolver el "Deadlock Dinámico" (donde la cola se estanca), el modelo se i
 4. **Estado 4 (CERRADO):** `TIME >= Tiempo_cierre`. La entrada se corta (`Entrada = 0`), la cola se vacía completamente hasta 0.
 
 ### Arquetipo: Soluciones Contraproducentes
-- (+) Demora → (+) Frustración → (+) Colados → (+) Tiempo_fila
+- (+) Demora -> (+) Frustración -> (+) Colados -> (+) Tiempo_fila
 - El fallo técnico genera conducta disruptiva que agrava el problema original
 
 ---
@@ -56,61 +62,81 @@ Para resolver el "Deadlock Dinámico" (donde la cola se estanca), el modelo se i
 
 ### Bucle de Refuerzo (Caos):
 ```
-Demora → Frustración → Colados → +Demora
+Demora -> Frustración -> Colados -> +Demora
 ```
 El empeoramiento del problema aumenta la frustración, lo que incrementa los colados, lo que vuelve a empeorar la demora.
 
 ### Bucle de Balance (Suministro):
 ```
-Entrega → Stock → Necesidad de reposición
+Entrega -> Stock -> Necesidad de reposición
 ```
 Cuando se entrega comida, el stock baja, lo que eventualmente requiere reposición.
 
 ### Bucle de Refuerzo (Fallo):
 ```
-Falla biométrica → Digitación manual → Ausencia de personal → Paro de flujo
+Falla biométrica -> Digitación manual -> Ausencia de personal -> Paro de flujo
 ```
-Las fallas en el sistema biométrico generan需要一个额外的工作来处理手动输入，这可能导致员工缺席，最终造成服务中断。
+Las fallas en el sistema biométrico generan trabajo adicional para procesar entradas manualmente, lo que puede llevar a ausencia de personal y eventualmente a un paro del servicio.
 
 ---
 
-## 4. Arquitectura del Modelo (Vensim/PySD)
+## 4. Arquitectura del Modelo (Python Puro con Integración Euler)
+
+El modelo se implementa en **Python puro** usando integración Euler con `TIME_STEP = 0.125 min`. Esta aproximación es más simple y robusta para manejar las discontinuidades de la FSM que los solvers de paso variable.
 
 ### Stocks Principales
-- **Cola_actual:** Beneficiarios esperando actualmente en la fila (máximo = Beneficiarios = 150)
+- **Cola_actual:** Beneficiarios esperando actualmente en la fila (máximo = Beneficiarios = 800)
 - **Stock_comida:** Platos disponibles
 - **Reposicion_activa:** Indicador de si hay proceso de reposición en curso (0 o 1 normalizado)
-- **Frustracion:** Nivel acumulado de frustración por demoras
+- **Frustracion:** Nivel acumulado de frustración por demoras (con cap máximo de 1000)
+- **Total_atendidos:** Contador acumulado de personas atendidas
 
 ### Ecuación Principal de Stock
-```
-d(Cola_actual)/dt = (Tasa_Llegada + Tasa_Colados) - Tasa_Atencion
+```python
+dCola = (Tasa_Llegada + Tasa_Colados) - Tasa_Atencion
 ```
 
 ### Distribución de Llegadas
-```vensim
-Tasa_Llegada(t) = Tasa_Llegada_base * factor_distribucion(t) * Tasa_asistencia
-factor_distribucion = IF THEN ELSE(t < 30, 0.2,
-                           IF THEN ELSE(t < 60, 0.7,
-                           IF THEN ELSE(t < 90, 1.0, 0.5)))
+```python
+def distribucion_llegadas(t):
+    if t < 30:     factor = 0.2
+    elif t < 60:   factor = 0.7
+    elif t < 90:   factor = 1.0
+    else:          factor = 0.5
+    return Tasa_Llegada_base * factor * Tasa_asistencia
 ```
 
-### Lógica de Control de Estados
-```vensim
-Reposicion_activa = INTEG(Tasa_de_llenado - Tasa_de_vaciado, 0)
-Tasa_de_llenado = IF THEN ELSE(Stock_comida <= 0 :AND: Reposicion_activa <= 0, 1/TIME_STEP, 0)
-Tasa_de_vaciado = IF THEN ELSE(Reposicion_activa > 0, 1/Tiempo_reposicion, 0)
+### Lógica de Control de Estados (FSM)
+```python
+if tiempo >= Tiempo_cierre:
+    return CERRADO
+if reposicion_activa > 0 or stock_comida <= 0:
+    return REPLENISHING
+return SERVING
 ```
 
 ### Flujo de Salida (Con Consistencia Física)
-```vensim
+```python
 Tasa_Atencion = MIN(Capacidad_Biometrica * Personal, Cola_actual / TIME_STEP)
 ```
+Esto asegura que no se atienda más de lo que hay en la cola.
+
+### Flujo de Colados (Con Límite Físico)
+```python
+tasa_colados = Costo_etico * (Frustracion / Factor_escala_frustracion) * Factor_colado
+tasa_colados = MIN(tasa_colados, Cola_actual / TIME_STEP)
+```
+Los colados nunca pueden superar la población físicamente presente en la cola.
+
+### Ecuación de Frustración (Con Decaimiento Natural y Cap)
+```python
+dFrustracion = Demora - (Tasa_Atencion * Factor_reduccion_frustracion) - (Frustracion * Tasa_decaimiento_frustracion)
+if Frustracion >= Frustracion_maxima:
+    dFrustracion = MIN(0, dFrustracion)
+```
+La frustración se calma con el tiempo (decaimiento del 10% por minuto) y tiene un cap máximo de 1000 para evitar explosión en escenarios extremos.
 
 ### Lógica de Cierre del Comedor
-```vensim
-Tasa_Llegada = Tasa_base * factor_distribucion * Tasa_asistencia
-```
 Cuando `TIME >= Tiempo_cierre`:
 - La tasa de entrada base se vuelve 0
 - Los colados también cesan (no hay a quien colarse)
@@ -118,7 +144,7 @@ Cuando `TIME >= Tiempo_cierre`:
 - El modelo termina la simulación con la cola completamente vacía
 
 ### Lógica de Falla Biométrica
-```vensim
+```python
 Falla_actual = IF THEN ELSE(RANDOM() < Tasa_falla_biometrica, 1, 0)
 Personal_activo = MAX(0, Personal - Falla_actual)
 ```
@@ -128,35 +154,55 @@ Personal_activo = MAX(0, Personal - Falla_actual)
 ## 5. Pruebas de Consistencia
 
 ### Consistencia Dimensional
-- Todas las tasas deben medirse en `estudiantes/minuto`
+- Todas las tasas se miden en `estudiantes/minuto`
 - Los stocks se miden en `estudiantes`
 - `Cola_actual / TIME_STEP` da `estudiantes/min` ✓
 
 ### Consistencia Física (Evitar Negativos)
-```vensim
+```python
 Tasa_Atencion = MIN(Capacidad_Biometrica * Personal, Cola_actual / TIME_STEP)
 ```
 Esto asegura que no se atienda más de lo que hay en la cola.
+
+### Pruebas de Robustez
+El modelo ha sido sometido a pruebas de condiciones extremas:
+- **Llegada masiva (100 est/min):** La cola satura en el límite de beneficiarios sin errores matemáticos
+- **Sin personal (Capacidad = 0):** La cola crece hasta el máximo, stock no se consume, sin división por cero
+- **Sensibilidad de Costo Ético:** Variaciones en el costo ético muestran impacto significativo en la tasa de colados
 
 ---
 
 ## 6. Escenarios y Políticas
 
 ### Escenario A (Normal): Flujo estándar de estudiantes.
+Parámetros base: Beneficiarios = 800, Tasa_Llegada_base = 9, Tasa_asistencia = 0.8
 
-### Escenario B (Crítico): Semana de parciales con mayor afluencia (Tasa_Llegada_base = 20, Tasa_asistencia = 0.95).
+### Escenario B (Crítico): Semana de parciales con mayor afluencia
+- Tasa_Llegada_base = 20 est/min
+- Tasa_asistencia = 0.95
 
 ### Política 1 (Logística): Stock de seguridad
-- Reduce tiempo de reposición de 10 a 2 minutos
+- Reduce tiempo de reposición de 5 a 2 minutos
 - Implementación: `Tiempo_reposicion = 2`
+- Impacto esperado: Menos tiempo bloqueado, colas más cortas
 
 ### Política 2 (Tecnológica): Doble biométrico
 - Duplica la capacidad biométrica
-- Implementación: `Capacidad_Biometrica = 12`
+- Implementación: `Capacidad_Biometrica = 10`
+- Impacto esperado: Vaciamiento de cola el doble de rápido
 
 ### Política 3 (Social): Campañas de cultura ciudadana
 - Aumenta el costo ético (más gente se cohíbe de colarse)
 - Implementación: `Costo_etico = 0.9`
+- Impacto esperado: Menos colados, flujo más ordenado
+
+### Política 4 (Logística + Tecnológica): Combinación P1 + P2
+- Reposición rápida + mayor capacidad de atención
+- Implementación: `Tiempo_reposicion = 2` y `Capacidad_Biometrica = 10`
+
+### Política 5 (Integral): Combinación P1 + P2 + P3
+- Reposición rápida + mayor capacidad + cultura ciudadana
+- Implementación: `Tiempo_reposicion = 2`, `Capacidad_Biometrica = 10`, `Costo_etico = 0.9`
 
 ---
 

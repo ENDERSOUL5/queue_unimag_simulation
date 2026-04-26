@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)));
 from src import (
     ejecutar_simulacion,
     calcular_estados_y_fluxos,
+    PARAMETROS,
 );
 
 def main():
@@ -56,7 +57,7 @@ def main():
   print(f"Cola máxima:        {cola.max():.2f} en t={tiempo[idx_max_cola]:.2f} min");
   print(f"Stock mínimo:      {stock.min():.2f}");
   print(f"Total atendidos:   {ta[-1]:.2f}");
-  print(f"Atendidos restantes: {150 - ta[-1]:.2f}");
+  print(f"Atendidos restantes: {PARAMETROS['Beneficiarios'] - ta[-1]:.2f}");
 
   print();
   print("="*70);

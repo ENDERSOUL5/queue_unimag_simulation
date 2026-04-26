@@ -67,8 +67,8 @@ def graficar_stock_comida(resultados):
 
   ax.axhline(y=0, color="red", linestyle="--", linewidth=1.5,
              label="Agotamiento (0)");
-  ax.axhline(y=50, color="blue", linestyle=":", linewidth=1,
-             label="Stock inicial (50)");
+  ax.axhline(y=PARAMETROS["Stock_inicial"], color="blue", linestyle=":", linewidth=1,
+             label=f'Stock inicial ({PARAMETROS["Stock_inicial"]})');
 
   ax.set_xlabel("Tiempo (minutos)", fontsize=12);
   ax.set_ylabel("Platos", fontsize=12);

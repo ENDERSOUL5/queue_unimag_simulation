@@ -1,88 +1,242 @@
 {UTF-8}
-Aforo_maximo=150
+{********************************************************}
+{ MODELO VENSIM - COMEDOR UNIMAGDALENA v2.0              }
+{ Traduccion funcionalmente identica al modelo Python    }
+{ FSM completa + Frustracion + Colados + Falla biometrica}
+{********************************************************}
+
+{--- PARAMETROS DEL MODELO ---}
+
+Beneficiarios=800
 	~	Estudiantes
-	~	Capacidad máxima del comedor antes del bloqueo total|
+	~	Total de estudiantes con derecho a almuerzo|
 
-Capacidad_normal=6
+Tasa_Llegada_base=9
 	~	Estudiantes/Minute
-	~	Tasa de servicio (Lectura del buffer de salida)|
+	~	Tasa base para distribucion horaria|
 
-{ IMPLEMENTACIÓN: Lógica de la Máquina de Estados }
-
-{ ESTADO 3: Entrada bloqueada si la fila está llena para permitir el vaciado real }
-Entrada_estudiantes= IF THEN ELSE(Estudiantes en la fila < Aforo_maximo, 10, 0)
-	~	Estudiantes/Minute
-	~	Evita el 'Entrada = Salida' que causaba la meseta infinita en 150.|
-
-{ ESTADO 1 y 2: El sistema solo permite salida si no está en proceso de reposición }
-Estado_sistema= IF THEN ELSE(Reposicion_activa > 0, 0, 1)
+Tasa_asistencia=0.8
 	~	dmnl
-	~	1 = Servicio Activo, 0 = Agotamiento/Reposición|
+	~	Porcentaje de beneficiarios que asiste|
 
-Estudiantes en la fila= INTEG (Entrada_estudiantes - Salida_estudiantes, Estudiantes_inicial)
-	~	Estudiantes
-	~	|
-
-Estudiantes_inicial=5
-	~	Estudiantes
-	~	|
-
-Llegada_comida_lote= IF THEN ELSE(Reposicion_activa > 0, Stock_inicial / Tiempo_reposicion, 0)
-	~	Platos_comida/Minute
-	~	|
-
-{ GESTIÓN DE TRANSICIONES DE ESTADO }
-Reposicion_activa= INTEG (Tasa_Entrada_Estado - Tasa_Salida_Estado, 0)
-	~	dmnl
-	~	Variable de estado: >0 indica que el sistema está en 'Estado de Reposición'|
-
-Tasa_Entrada_Estado= IF THEN ELSE(Stock_comida <= 0 :AND: Reposicion_activa <= 0, 1/TIME STEP, 0)
-	~	1/Minute
-	~	Disparador (Trigger): Transición del Estado de Servicio al de Reposición|
-
-Tasa_Salida_Estado= IF THEN ELSE(Reposicion_activa > 0, 1/Tiempo_reposicion, 0)
-	~	1/Minute
-	~	Temporizador: Transición de vuelta al Estado de Servicio tras 10 min|
-
-Salida_estudiantes= IF THEN ELSE(Estado_sistema = 1 :AND: Stock_comida > 0, 
-                                   MIN(Capacidad_normal, Estudiantes en la fila / TIME STEP), 
-                                   0)
+Capacidad_Biometrica=5
 	~	Estudiantes/Minute
-	~	Solo hay flujo de salida en el 'Estado 1'|
+	~	Outflow bajo disponibilidad biometrica|
 
-Stock_comida= INTEG (Llegada_comida_lote - Salida_estudiantes, Stock_inicial)
-	~	Platos_comida
-	~	|
+Capacidad_Manual=2
+	~	Estudiantes/Minute
+	~	Outflow de respaldo cuando falla biometrico|
 
-Stock_inicial=50
-	~	Platos_comida
-	~	|
-
-Tiempo_reposicion=10
+Tiempo_reposicion=5
 	~	Minute
-	~	|
+	~	Latencia de la interrupcion por agotamiento|
 
-********************************************************
+Stock_inicial=100
+	~	Platos
+	~	Stock inicial de platos disponibles|
+
+Stock_Seguridad=10
+	~	Platos
+	~	Buffer para reducir tiempo de reposicion|
+
+Personal_presente=1
+	~	Personas
+	~	Binario: 1 = hay personal, 0 = no hay|
+
+Costo_etico=0.5
+	~	dmnl
+	~	0 = nadie se averguenza, 1 = todos se averguenzan|
+
+Tasa_falla_biometrica=0.1
+	~	1/Minute
+	~	Probabilidad de fallo por minuto|
+
+Tiempo_cierre=240
+	~	Minute
+	~	Horario de cierre del comedor|
+
+TIME_STEP=0.125
+	~	Minute
+	~	Intervalo de simulacion para precision en bloqueos|
+
+Factor_colado=0.5
+	~	dmnl
+	~	Peso de la frustracion sobre los colados|
+
+Factor_reduccion_frustracion=10
+	~	Estudiantes/Minute
+	~	Reduccion de frustracion por atencion efectiva|
+
+Factor_escala_frustracion=10
+	~	dmnl
+	~	Divisor para escalar frustracion en colados|
+
+Tasa_decaimiento_frustracion=0.1
+	~	1/Minute
+	~	Decaimiento natural de la frustracion (10% por minuto)|
+
+Frustracion_maxima=1000
+	~	dmnl
+	~	Cap maximo para evitar explosion de frustracion|
+
+Cola_inicial=0
+	~	Estudiantes
+	~	Beneficiarios en cola al abrir|
+
+{--- DISTRIBUCION HORARIA DE LLEGADAS ---}
+
+Factor_horario= IF THEN ELSE(TIME < 30, 0.2, IF THEN ELSE(TIME < 60, 0.7, IF THEN ELSE(TIME < 90, 1.0, 0.5)))
+	~	dmnl
+	~	20% lento, 70% pre-pico, 100% pico, 50% bajando|
+
+Tasa_Llegada= Tasa_Llegada_base * Factor_horario * Tasa_asistencia
+	~	Estudiantes/Minute
+	~	Llegada efectiva segun hora del dia y asistencia|
+
+{--- FALLA BIOMETRICA ---}
+
+Falla_actual= IF THEN ELSE(RANDOM(0, 1) < Tasa_falla_biometrica, 1, 0)
+	~	dmnl
+	~	1 = falla activa este paso, 0 = funciona|
+
+Personal_activo= MAX(0, Personal_presente - Falla_actual)
+	~	Personas
+	~	Personal efectivo despues de falla|
+
+{--- FSM: MAQUINA DE ESTADOS ---}
+
+Estado_numerico= IF THEN ELSE(TIME >= Tiempo_cierre, 2, IF THEN ELSE(Reposicion_activa > 0 :OR: Stock_comida <= 0, 1, 0))
+	~	dmnl
+	~	0=SERVING, 1=REPLENISHING, 2=CERRADO|
+
+Estado_SERVING= IF THEN ELSE(Estado_numerico = 0, 1, 0)
+	~	dmnl
+	~	1 cuando el sistema opera en regimen normal|
+
+Estado_REPLENISHING= IF THEN ELSE(Estado_numerico = 1, 1, 0)
+	~	dmnl
+	~	1 cuando el sistema esta en reposicion|
+
+Estado_CERRADO= IF THEN ELSE(Estado_numerico = 2, 1, 0)
+	~	dmnl
+	~	1 cuando el comedor cerro|
+
+{--- STOCKS PRINCIPALES ---}
+
+Cola_actual= INTEG (Entrada_total - Tasa_Atencion, Cola_inicial)
+	~	Estudiantes
+	~	Beneficiarios esperando actualmente en la fila|
+
+Stock_comida= INTEG (Recarga_comida - Tasa_Atencion, Stock_inicial)
+	~	Platos
+	~	Platos disponibles en el comedor|
+
+Reposicion_activa= INTEG (Tasa_Activar_Repo - Tasa_Desactivar_Repo, 0)
+	~	dmnl
+	~	Indicador de reposicion en curso (0 o 1)|
+
+Frustracion= INTEG (dFrustracion, 0)
+	~	dmnl
+	~	Nivel acumulado de frustracion por demoras|
+
+Total_atendidos= INTEG (Tasa_Atencion, 0)
+	~	Estudiantes
+	~	Contador acumulado de personas atendidas|
+
+{--- FLUJOS Y FLUXOS ---}
+
+Beneficiarios_disponibles= MAX(0, Beneficiarios - Total_atendidos)
+	~	Estudiantes
+	~	Beneficiarios que aun no han sido atendidos|
+
+Espacio_cola= MAX(0, Beneficiarios_disponibles - Cola_actual)
+	~	Estudiantes
+	~	Espacio disponible en la cola antes de saturacion|
+
+Demora= MAX(0, Cola_actual - Capacidad_Biometrica * Personal_presente)
+	~	Estudiantes
+	~	Exceso de cola sobre capacidad de atencion|
+
+Tasa_Colados_raw= Costo_etico * (Frustracion / Factor_escala_frustracion) * Factor_colado
+	~	Estudiantes/Minute
+	~	Tasa bruta de colados por frustracion|
+
+Tasa_Colados= MIN(Tasa_Colados_raw, Cola_actual / TIME_STEP)
+	~	Estudiantes/Minute
+	~	Colados limitados por poblacion fisicamente presente|
+
+Entrada_total= IF THEN ELSE(Estado_CERRADO = 1, 0, MIN(Tasa_Llegada + Tasa_Colados, Espacio_cola / TIME_STEP))
+	~	Estudiantes/Minute
+	~	Entrada total: llegadas + colados, cortada en cierre y limitada por aforo|
+
+Tasa_Atencion= IF THEN ELSE(Estado_REPLENISHING = 1, 0, MIN(Capacidad_Biometrica * Personal_activo, MIN(Cola_actual, Beneficiarios_disponibles) / TIME_STEP))
+	~	Estudiantes/Minute
+	~	Salida: bloqueada en reposicion, limitada por cola y disponibles|
+
+{--- LOGICA DE REPOSICION (EVENTO DISCRETO) ---}
+
+Tasa_Activar_Repo= IF THEN ELSE(Stock_comida <= 0 :AND: Reposicion_activa <= 0, 1 / TIME_STEP, 0)
+	~	1/Minute
+	~	Trigger: activa reposicion instantaneamente al agotarse stock|
+
+Tasa_Desactivar_Repo= IF THEN ELSE(Reposicion_activa > 0, 1 / Tiempo_reposicion, 0)
+	~	1/Minute
+	~	Timer: desactiva reposicion tras Tiempo_reposicion minutos|
+
+Reposicion_previo= DELAY FIXED(Reposicion_activa, TIME STEP, 0)
+	~	dmnl
+	~	Valor de Reposicion_activa en el paso anterior (detector de flanco)|
+
+Termino_repo= IF THEN ELSE(Reposicion_previo > 0 :AND: Reposicion_activa <= 0, 1, 0)
+	~	dmnl
+	~	1 en el paso exacto donde termina la reposicion|
+
+Recarga_comida= Termino_repo * Stock_inicial / TIME_STEP
+	~	Platos/Minute
+	~	Pulso de recarga instantanea de stock al terminar reposicion|
+
+{--- ECUACION DE FRUSTRACION ---}
+
+dFrustracion_raw= Demora - (Tasa_Atencion * Factor_reduccion_frustracion) - (Frustracion * Tasa_decaimiento_frustracion)
+	~	dmnl/Minute
+	~	Cambio bruto de frustracion: demora - reduccion - decaimiento|
+
+dFrustracion= IF THEN ELSE(Frustracion >= Frustracion_maxima, MIN(0, dFrustracion_raw), dFrustracion_raw)
+	~	dmnl/Minute
+	~	Frustracion con cap maximo: no crece mas alla del limite|
+
+{--- VARIABLES DE MONITOREO ---}
+
+Tiempo_en_servicio= IF THEN ELSE(Estado_SERVING = 1, TIME STEP, 0)
+	~	Minute
+	~	Acumulador auxiliar para tiempo en cada estado (opcional)|
+
+{********************************************************
 	.Control
-********************************************************~
+********************************************************}
+
 FINAL TIME  = 240
 	~	Minute
 	~	|
+
 INITIAL TIME  = 0
 	~	Minute
 	~	|
-SAVEPER  = TIME STEP 
-	~	Minute
-	~	|
-TIME STEP=0.0625
+
+SAVEPER  = TIME STEP
 	~	Minute
 	~	|
 
+TIME STEP = 0.125
+	~	Minute
+	~	|
+
+{--- SKETCH INFORMATION ---}
 \\\---/// Sketch information - do not modify anything except names
 V300  Do not put anything below this section - it will be ignored
 *View 1
 $-1--1--1,0,|12||-1--1--1|-1--1--1|-1--1--1|-1--1--1|-1--1--1|96,96,75,2
-10,1,Estudiantes en la fila,274,342,55,26,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,1,Cola_actual,274,342,55,26,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
 12,2,48,-46,337,10,8,0,3,0,0,-1,0,0,0,0,0,0,0,0,0
 1,3,10,2,100,0,0,22,0,192,0,-1--1--1,,1|(25,337)|
 1,4,10,1,4,0,0,22,0,192,0,-1--1--1,,1|(158,337)|
@@ -90,17 +244,17 @@ $-1--1--1,0,|12||-1--1--1|-1--1--1|-1--1--1|-1--1--1|-1--1--1|96,96,75,2
 1,6,8,1,100,0,0,22,0,192,0,-1--1--1,,1|(392,342)|
 1,7,8,5,4,0,0,22,0,192,0,-1--1--1,,1|(530,342)|
 11,8,0,461,342,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
-10,9,Salida_estudiantes,461,376,46,26,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,9,Tasa_Atencion,461,376,46,26,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
 11,10,0,91,337,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
-10,11,Entrada_estudiantes,91,371,46,26,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
-10,12,Capacidad_normal,26,227,67,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,11,Entrada_total,91,371,46,26,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,12,Capacidad_Biometrica,26,227,67,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
 1,13,12,9,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
-10,14,Estudiantes_inicial,279,218,57,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,14,Cola_inicial,279,218,57,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
 1,15,14,1,0,0,0,0,0,192,1,-1--1--1,,1|(0,0)|
-10,16,Aforo_maximo,-29,504,74,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,16,Beneficiarios,-29,504,74,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
 1,17,16,11,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
 10,18,Tiempo_reposicion,465,199,46,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
-10,19,Estado_sistema,368,493,46,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,19,Estado_REPLENISHING,368,493,46,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
 1,20,18,19,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
 1,21,19,9,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
 10,22,Stock_comida,1023,338,50,26,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
@@ -111,25 +265,32 @@ $-1--1--1,0,|12||-1--1--1|-1--1--1|-1--1--1|-1--1--1|-1--1--1|96,96,75,2
 10,27,TIME STEP,670,108,49,16,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|||128-128-128,0,0,0,0,0,0
 1,28,27,9,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
 10,29,Reposicion_activa,900,715,46,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
-10,30,Time,395,638,31,16,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|||128-128-128,0,0,0,0,0,0
+10,30,TIME,395,638,31,16,8,2,0,3,-1,0,0,0,128-128-128,0-0-0,|||128-128-128,0,0,0,0,0,0
 12,31,48,722,338,10,8,0,3,0,0,-1,0,0,0,0,0,0,0,0,0
 1,32,34,31,100,0,0,22,0,192,0,-1--1--1,,1|(789,338)|
 1,33,34,22,4,0,0,22,0,192,0,-1--1--1,,1|(915,338)|
 11,34,0,852,338,6,8,34,3,0,0,1,0,0,0,0,0,0,0,0,0
-10,35,Llegada_comida_lote,852,372,46,26,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,35,Recarga_comida,852,372,46,26,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
 1,36,29,35,1,0,0,0,0,192,0,-1--1--1,,1|(697,402)|
 1,37,18,29,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
 1,38,22,29,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
 1,39,30,30,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
-10,40,Tiempo_activacion,271,131,50,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,40,Termino_repo,271,131,50,26,8,3,0,0,-1,0,0,0,0,0,0,0,0,0
 1,41,18,40,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
 1,42,22,40,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
 1,43,29,40,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
 1,44,40,35,0,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
-///---\\\
+10,45,Frustracion,1200,342,55,26,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
+10,46,dFrustracion,1200,450,55,26,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,47,46,45,1,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,48,Total_atendidos,1400,342,65,26,3,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,49,9,48,1,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+10,50,Tasa_Colados,200,450,55,26,40,3,0,0,-1,0,0,0,0,0,0,0,0,0
+1,51,50,11,1,0,0,0,0,192,0,-1--1--1,,1|(0,0)|
+///---\\\\\\
 :L<%^E!@
-4:Time
-5:Salida_estudiantes
+4:TIME
+5:Tasa_Atencion
 9:current
 19:75,0
 24:0

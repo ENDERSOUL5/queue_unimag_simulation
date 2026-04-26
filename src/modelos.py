@@ -75,7 +75,8 @@ def calcular_flux(cola_actual, stock_comida, frustracion, total_atendidos, tiemp
     if cola_actual >= beneficiarios_disponibles:
       tasa_colados = 0.0;
     else:
-      tasa_colados = p["Costo_etico"] * (frustracion / 10.0) * p["Factor_colado"];
+      tasa_colados = p["Costo_etico"] * (frustracion / p["Factor_escala_frustracion"]) * p["Factor_colado"];
+      tasa_colados = min(tasa_colados, cola_actual / p["TIME_STEP"]);
     capacidad_atencion = 0.0;
     llegada_comida = 0.0;
 
@@ -87,7 +88,8 @@ def calcular_flux(cola_actual, stock_comida, frustracion, total_atendidos, tiemp
       tasa_llegada = 0.0;
 
     demora = max(0.0, cola_actual - p["Capacidad_Biometrica"] * p["Personal_presente"]);
-    tasa_colados = p["Costo_etico"] * (frustracion / 10.0) * p["Factor_colado"];
+    tasa_colados = p["Costo_etico"] * (frustracion / p["Factor_escala_frustracion"]) * p["Factor_colado"];
+    tasa_colados = min(tasa_colados, cola_actual / p["TIME_STEP"]);
 
     capacidad_atencion = min(p["Capacidad_Biometrica"] * p["Personal_presente"],
                               min(cola_actual, beneficiarios_disponibles) / p["TIME_STEP"]);
@@ -136,7 +138,12 @@ def derivatives(t, y):
     dReposicion = 0.0;
 
   demora = max(0.0, cola_actual - p["Capacidad_Biometrica"] * p["Personal_presente"]);
-  dFrustracion = demora - (flux["tasa_atencion"] * p["Factor_reduccion_frustracion"]);
+  dFrustracion = (demora
+                  - (flux["tasa_atencion"] * p["Factor_reduccion_frustracion"])
+                  - (frustracion * p["Tasa_decaimiento_frustracion"]));
+  # Aplicar cap maximo a la frustracion (no puede crecer mas alla del limite)
+  if frustracion >= p["Frustracion_maxima"]:
+    dFrustracion = min(0.0, dFrustracion);
 
   dAtendidos = flux["tasa_atencion"];
 

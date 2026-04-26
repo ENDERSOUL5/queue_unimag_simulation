@@ -14,6 +14,7 @@ from src import (
     calcular_estados_y_fluxos,
     imprimir_resumen,
     graficar_resumen_completo,
+    exportar_resultados_md,
 );
 
 def main():
@@ -30,6 +31,8 @@ def main():
   imprimir_resumen(resultados, estados);
 
   graficar_resumen_completo(resultados, estados, fluxos);
+
+  exportar_resultados_md(resultados, estados, fluxos);
 
   print("\nSimulación completada exitosamente!");
 
